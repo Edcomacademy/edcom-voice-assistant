@@ -1,16 +1,22 @@
-<div class="row" style="margin-bottom:10px;">
-  <label for="mode"><strong>Modo:</strong></label>
-  <select id="mode">
-    <option value="tutor" selected>Tutor (IA asesora)</option>
-    <option value="sim">Simulación (IA persona ciudadana)</option>
-  </select>
-
-  <label for="difficulty"><strong>Dificultad:</strong></label>
-  <select id="difficulty">
-    <option value="facil">Fácil</option>
-    <option value="media" selected>Media</option>
-    <option value="dificil">Difícil</option>
-  </select>
-
-  <button id="startSim">Iniciar simulación</button>
-</div>
+<!-- public/index.html -->
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Simulador con IA — Atención Ciudadana</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 12px; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .chat { border: 1px solid #ddd; border-radius: 8px; padding: 12px; min-height: 280px; }
+      .msg { margin: 10px 0; }
+      .yo { color: #0b5; }
+      .ia { color: #06c; }
+      .ciudadania { color: #c50; }
+      button { padding: 10px 14px; border: 0; border-radius: 8px; background: #111; color: #fff; cursor: pointer; }
+      input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+      select { padding: 8px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Simulador con IA — Atención Ciudadana</h1>
