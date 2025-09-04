@@ -20,3 +20,44 @@
   </head>
   <body>
     <h1>Simulador con IA — Atención Ciudadana</h1>
+
+    <!-- Escenario -->
+    <div class="row" style="margin-bottom:10px;">
+      <label for="scenario"><strong>Escenario:</strong></label>
+      <select id="scenario">
+        <option value="atencion_ciudadana" selected>Atención Ciudadana (difícil)</option>
+        <option value="general">Asistente general</option>
+      </select>
+    </div>
+
+    <!-- NUEVO: modo, dificultad e inicio de simulación -->
+    <div class="row" style="margin:10px 0;">
+      <label for="mode"><strong>Modo:</strong></label>
+      <select id="mode">
+        <option value="tutor" selected>Tutor (IA asesora)</option>
+        <option value="sim">Simulación (IA persona ciudadana)</option>
+      </select>
+
+      <label for="difficulty"><strong>Dificultad:</strong></label>
+      <select id="difficulty">
+        <option value="facil">Fácil</option>
+        <option value="media" selected>Media</option>
+        <option value="dificil">Difícil</option>
+      </select>
+
+      <button id="startSim">Iniciar simulación</button>
+    </div>
+
+    <div class="chat" id="chat"></div>
+
+    <div class="row" style="margin-top:10px;">
+      <input id="text" type="text" placeholder="Escribe tu mensaje…" />
+      <button id="send">Enviar</button>
+      <button id="mic">🎤 Hablar</button>
+    </div>
+
+    <audio id="player" controls style="margin-top:12px; width:100%;"></audio>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
