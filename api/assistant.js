@@ -84,4 +84,73 @@ export async function POST(request) {
       mode = "tutor",          // "tutor" | "sim"
       difficulty = "media",    // "facil" | "media" | "dificil"
       start = false,           // true para que la IA inicie la simulación
-      history = []             // [{role:"user"|"assi]()
+      history = []             // [{role:"user"|"assistant"|"system", content:"..."}]
+    } = body || {};
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    // 1) Transcripción si llega audio
+    let userText = message || "";
+    if (audioBase64) {
+      const audioBuffer = Buffer.from(audioBase64, "base64");
+      const transcription = await openai.audio.transcriptions.create({
+        model: "gpt-4o-mini-transcribe",
+        file: await toFile(audioBuffer, "audio.webm")
+      });
+      userText = (transcription.text || "").trim();
+    }
+
+    // 2) Sistema según modo
+    const system =
+      String(mode).toLowerCase() === "sim"
+        ? systemForSimulation(scenario, difficulty)
+        : systemForTutor(scenario);
+
+    // 3) Mensajes para Responses API
+    const messages = [];
+    messages.push({ role: "system", content: system });
+
+    if (String(mode).toLowerCase() === "sim" && start) {
+      messages.push({
+        role: "user",
+        content:
+          "Inicia la simulación con tu primera intervención como persona ciudadana. Presenta el caso en 2–3 oraciones y una petición clara."
+      });
+    } else {
+      for (const m of history) {
+        if (!m || !m.role || !m.content) continue;
+        messages.push({ role: m.role, content: m.content });
+      }
+      if (userText) messages.push({ role: "user", content: userText });
+    }
+
+    const resp = await openai.responses.create({
+      model: "gpt-4o-mini",
+      input: messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n")
+    });
+
+    const answer = (resp.output_text || "").trim();
+
+    // 4) TTS
+    const speech = await openai.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      input: answer,
+      format: "mp3"
+    });
+    const audioArrayBuffer = await speech.arrayBuffer();
+    const audioBase64Out = Buffer.from(audioArrayBuffer).toString("base64");
+    const dataUrl = `data:audio/mp3;base64,${audioBase64Out}`;
+
+    return new Response(
+      JSON.stringify({ text: answer, audioDataUrl: dataUrl }),
+      { headers: { ...cors, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    console.error(err);
+    return new Response(
+      JSON.stringify({ error: "Error en el servidor", details: String(err) }),
+      { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
+    );
+  }
+}
