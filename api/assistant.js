@@ -6,18 +6,69 @@ const cors = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
-// Escenario base: Atención Ciudadana, tono empático, inclusivo y profesional.
-function buildSystemPrompt(scenario = "atencion_ciudadana") {
+function difficultyHints(level = "media") {
+  const d = String(level || "media").toLowerCase();
+  if (d === "facil") {
+    return [
+      "La persona usuaria se muestra colaborativa.",
+      "Evita lenguaje agresivo.",
+      "Expone el problema en una o dos frases.",
+      "Deja espacio para que la persona asesora pregunte."
+    ];
+  }
+  if (d === "dificil") {
+    return [
+      "La persona usuaria llega molesta y con frustración acumulada.",
+      "Usa expresiones firmes sin insultos.",
+      "Interrumpe y exige soluciones inmediatas.",
+      "Añade detalles que confunden para poner a prueba la escucha activa."
+    ];
+  }
+  // media
+  return [
+    "La persona usuaria expresa inconformidad, pero acepta el diálogo.",
+    "Pide claridad sobre pasos y tiempos.",
+    "Trae un antecedente o folio previo."
+  ];
+}
+
+// SISTEMA: plantillas
+function systemForTutor(scenario = "atencion_ciudadana") {
   if (scenario === "atencion_ciudadana") {
     return [
-      "Eres una persona asesora de Atención Ciudadana.",
-      "Objetivo: contener, escuchar y resolver. Lenguaje inclusivo, claro y respetuoso.",
-      "Si la solicitud rebasa tu competencia, orienta con pasos concretos.",
-      "Responde en español de México, con cortesía y precisión.",
-      "Sé firme con límites institucionales, sin sonar punitivo."
+      "Rol: Asesoría de Atención Ciudadana.",
+      "Objetivo: contener, escuchar y resolver con lenguaje inclusivo y respetuoso.",
+      "Pautas:",
+      "- Saluda, valida la emoción y resume el problema antes de proponer.",
+      "- Explica pasos concretos, tiempos y límites institucionales.",
+      "- Evita tecnicismos innecesarios, ofrece alternativas realistas.",
+      "- Cierra con confirmación de entendimiento y próximos pasos.",
+      "Tono: empático, claro, profesional. Español de México."
     ].join("\n");
   }
-  return "Eres una persona asistente útil, clara y profesional en español.";
+  return "Eres una persona asistente clara, inclusiva y profesional en español.";
+}
+
+function systemForSimulation(scenario = "atencion_ciudadana", difficulty = "media") {
+  const hints = difficultyHints(difficulty);
+  if (scenario === "atencion_ciudadana") {
+    return [
+      "Rol: Persona ciudadana que acude a Atención Ciudadana.",
+      "Objetivo: plantear un caso verosímil para que la persona asesora practique.",
+      "Lo que SÍ haces:",
+      "- Planteas el problema desde tu perspectiva.",
+      "- Mantienes coherencia con el contexto de trámites municipales.",
+      "- Respondes en turnos breves (2 a 4 oraciones) para permitir la interacción.",
+      "- Si la asesora pide datos, entregas información razonable (folio, fecha, área).",
+      `Dificultad: ${difficulty}. Pistas de actuación:`,
+      ...hints.map(h => `• ${h}`),
+      "Lo que NO haces:",
+      "- No das la solución por la asesora.",
+      "- No insultas ni usas lenguaje discriminatorio.",
+      "Idioma: español de México. Mantén la simulación sin romper personaje."
+    ].join("\n");
+  }
+  return "Simula a una persona usuaria de manera verosímil, sin romper personaje.";
 }
 
 export async function OPTIONS() {
@@ -26,46 +77,74 @@ export async function OPTIONS() {
 
 export async function POST(request) {
   try {
-    const { message, audioBase64, scenario } = await request.json();
+    const body = await request.json();
+    const {
+      message,          // texto del usuario (cuando mode = tutor)
+      audioBase64,      // audio del usuario (cuando mode = tutor)
+      scenario,         // "atencion_ciudadana" | "general"
+      mode,             // "tutor" | "sim"
+      difficulty,       // "facil" | "media" | "dificil"
+      start,            // true para que la IA inicie la simulación
+      history = []      // historial [{role:"user"|"assistant"|"system", content:"..."}]
+    } = body || {};
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    // 1) Si llega audio, transcribe; si no, usa el mensaje de texto
+    // 1) Si llega audio, transcribe; si no, usa texto
     let userText = message || "";
     if (audioBase64) {
       const audioBuffer = Buffer.from(audioBase64, "base64");
       const transcription = await openai.audio.transcriptions.create({
-        // Modelos actuales de STT (más nuevos que Whisper):
-        // gpt-4o-transcribe / gpt-4o-mini-transcribe
-        // Para costo bajo usa el "mini":
         model: "gpt-4o-mini-transcribe",
         file: await toFile(audioBuffer, "audio.webm")
       });
       userText = (transcription.text || "").trim();
     }
 
-    if (!userText) {
-      return new Response(
-        JSON.stringify({ error: "Falta 'message' o 'audioBase64'." }),
-        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
-      );
+    // 2) Construye el sistema según el modo
+    let system;
+    if (String(mode).toLowerCase() === "sim") {
+      system = systemForSimulation(scenario, difficulty);
+    } else {
+      system = systemForTutor(scenario);
     }
 
-    const systemPrompt = buildSystemPrompt(scenario);
+    // 3) Prepara la entrada para Responses API
+    //    Usamos un prompt compacto + historial del front.
+    const messages = [];
+    messages.push({ role: "system", content: system });
 
-    // 2) Genera la respuesta en texto con Responses API
-    const prompt = `${systemPrompt}\n\nPersona usuaria: ${userText}\n\nTu respuesta:`;
+    // Si es simulación y start=true, pedimos a la IA que INICIE la interacción.
+    if (String(mode).toLowerCase() === "sim" && start) {
+      messages.push({
+        role: "user",
+        content:
+          "Inicia la simulación con tu primera intervención como persona ciudadana. Presenta el caso en 2–3 oraciones y una petición clara."
+      });
+    } else {
+      // Caso normal: agregamos historial + último mensaje del usuario si existe
+      for (const m of history) {
+        if (!m || !m.role || !m.content) continue;
+        messages.push({ role: m.role, content: m.content });
+      }
+      if (userText) {
+        messages.push({ role: "user", content: userText });
+      }
+    }
+
     const resp = await openai.responses.create({
       model: "gpt-4o-mini",
-      input: prompt
+      input: messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n")
     });
+
     const answer = (resp.output_text || "").trim();
 
-    // 3) Convierte la respuesta a audio con TTS
+    // 4) Genera voz
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
-      voice: "alloy",   // Puedes cambiar a: verse, coral, sage, etc.
+      voice: "alloy",
       input: answer,
-      format: "mp3"     // mp3 funciona bien en la mayoría de navegadores
+      format: "mp3"
     });
     const audioArrayBuffer = await speech.arrayBuffer();
     const audioBase64Out = Buffer.from(audioArrayBuffer).toString("base64");
@@ -83,4 +162,3 @@ export async function POST(request) {
     );
   }
 }
-
